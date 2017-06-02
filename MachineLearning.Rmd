@@ -1,0 +1,74 @@
+#Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement ??? a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, six participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. Data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants were collected. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). The goal of this project is to predict the manner ('classe' variable) in which they did the exercise using any of the other variables in the data set. 
+#Statistical Analysis
+Because the pml-testint.csv does not have classe variable, so it can not be used to build and validate the model. This project will only use the pml-training.csv dataset.
+## Load and partition dataset
+```{r results=FALSE, message=FALSE}
+library(ggplot2)
+library(caret)
+library(corrplot)
+library(dplyr)
+library(e1071)
+library(klaR)
+library(rpart)
+library(randomForest)
+#Removing NA values
+data <- read.csv('pml-training.csv', na.strings = c('NA',' ', '#DIV/0!'))
+data <- data[,colSums(is.na(data)) == 0]
+#Remove unrelevant columns
+data <- data[,-c(1:7)]
+#partition dataset into training, testing, and validation data.
+set.seed(2332)
+inBuild <- createDataPartition(y=data$classe,p=0.7,list=FALSE)
+validation <- data[-inBuild,]
+Builddata <- data[inBuild,]
+inTrain <- createDataPartition(y=Builddata$classe,p=0.7,list=FALSE)
+training <- Builddata[inTrain,]
+testing <- Builddata[-inTrain,]
+```
+
+##data preprocessing
+```{r message=FALSE}
+#remove correlated variables
+correlation <- cor(training[1:52])
+diag(correlation) <- 0
+correlation <- as.data.frame(correlation)
+correlation_select <- correlation > 0.7
+v <- NULL
+k <- 1
+for (i in 1:(nrow(correlation_select)-1)){
+        for (j  in (i+1):ncol(correlation_select)){
+                if (correlation_select[i,j] == 'TRUE'){
+                        v[k] <- j
+                        k = k+1
+                }
+        }
+}
+training <- training[,-v]
+```
+
+##Build model
+```{r message=FALSE}
+modFit_1 <- train(classe ~ ., data=training, method='lda')
+modFit_2 <- rpart(classe ~., data=training, method='class')
+modFit_3 <- randomForest(classe ~., data=training,method='class')
+pred_1 <- predict(modFit_1,testing)
+pred_2 <- predict(modFit_2, testing,type='class')
+pred_3 <- predict(modFit_3,testing,type='class')
+pred <- data.frame(pred_1,pred_2,pred_3,classe=testing$classe)
+modFit_4 <- randomForest(classe ~ ., data=pred, method='class')
+```
+
+##Model Validation
+```{r message=FALSE}
+pred_mode1 <- predict(modFit_1,validation)
+pred_mode2 <- predict(modFit_2,validation,type='class')
+pred_mode3 <- predict(modFit_3,validation,type='class')
+pred_data <- data.frame(pred_1=pred_mode1,pred_2=pred_mode2,pred_3=pred_mode3)
+pred_mode4 <- predict(modFit_4,pred_data,type='class')
+confusionMatrix(pred_mode1,validation$classe)$overall
+confusionMatrix(pred_mode2,validation$classe)$overall
+confusionMatrix(pred_mode3,validation$classe)$overall
+confusionMatrix(pred_mode4,validation$classe)$overall
+```
+The random forest model has the highest accuracy, 98.9%. Combining predictors does not increase the acccuracy, but complexed the model and calculation process. So, the final model is the random forest model. 
